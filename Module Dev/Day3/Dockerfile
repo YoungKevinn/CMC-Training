@@ -15,13 +15,15 @@ RUN dotnet publish AssetManager/AssetManager.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# Create directory for SQLite database file
-RUN mkdir -p /data
+# curl is required by the HEALTHCHECK below
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:8080
-ENV ConnectionStrings__DefaultConnection="Data Source=/data/mini_asm.db"
+# Overridden by docker-compose.yml to point at the `db` service
+ENV ConnectionStrings__DefaultConnection="Server=db;Port=3306;Database=mini_asm;User=root;Password=root;"
 
 EXPOSE 8080
 

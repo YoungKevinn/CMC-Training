@@ -33,42 +33,71 @@ https://github.com/YoungKevinn/CMC-Training/pull/1
 
 ## Bài 1: Migrate sang Database
 
-**Database chọn:** SQLite (không cần cài đặt thêm)
+**Database chọn:** MySQL 8 (local instance, port 3307, user `root`/`root`)
 
 **Cách implement:**
+- `Pomelo.EntityFrameworkCore.MySql` 8.0.2 làm EF Core provider
 - `AppDbContext` (EF Core 8) với 3 bảng: `Assets`, `ScanJobs`, `ScanResults`
 - `EfAssetStorage` implements `IAssetStorage` — thay thế `MemoryStorage` từ Day 1
 - Schema tự tạo lúc start server (`db.Database.EnsureCreated()`)
-- File DB: `mini_asm.db` trong thư mục project
+- Connection string trong `appsettings.json`: `Server=localhost;Port=3307;Database=mini_asm;User=root;Password=root;`
+- Các cột có index (`Type`, `Status`, `ScanType`, ...) được `HasMaxLength` rõ ràng — MySQL không cho index cột `longtext` (default mapping của EF Core cho string không giới hạn)
 
-**Minh chứng — API response khi tạo asset (data lưu vào SQLite):**
+**Minh chứng — API response khi tạo asset (ghi vào MySQL):**
 
 ```
 POST http://localhost:8080/assets
-Body: {"name":"google.com","type":"domain"}
+Body: {"name":"mysql-test.com","type":"domain"}
 
 Response 201:
 {
-  "id": "c57e18aa-7e65-4ccc-a57b-1a0119850280",
-  "name": "google.com",
+  "id": "7d02d100-f092-4884-a69f-8b9f61c05454",
+  "name": "mysql-test.com",
   "type": "domain",
   "status": "active",
-  "created_at": "2026-06-19T03:46:32.6340776Z",
-  "updated_at": "2026-06-19T03:46:32.6340991Z"
+  "created_at": "2026-06-19T06:20:09.620226Z",
+  "updated_at": "2026-06-19T06:20:09.6202425Z"
 }
 ```
 
-**Minh chứng — Stats sau khi tạo 2 assets (domain + ip):**
+**Minh chứng — Query trực tiếp vào MySQL bằng `mysql` CLI (xác nhận data thật trong DB):**
 
 ```
-GET http://localhost:8080/assets/stats
+$ mysql -h 127.0.0.1 -P 3307 -u root -proot -e "SELECT id, name, type, status FROM mini_asm.Assets;"
+
+id                                      name             type     status
+7d02d100-f092-4884-a69f-8b9f61c05454    mysql-test.com   domain   active
+```
+
+**Minh chứng — Restart server, data vẫn còn (persistence):**
+
+```
+# Sau khi Stop-Process server và chạy lại dotnet run:
+GET http://localhost:8080/assets
 
 Response 200:
 {
-  "total": 2,
-  "by_type": { "domain": 1, "ip": 1 },
-  "by_status": { "active": 2 }
+  "items": [
+    {
+      "id": "7d02d100-f092-4884-a69f-8b9f61c05454",
+      "name": "mysql-test.com",
+      "type": "domain",
+      "status": "active",
+      ...
+    }
+  ],
+  "total": 1
 }
+```
+
+**Minh chứng — ScanJobs table cũng hoạt động qua MySQL:**
+
+```
+$ mysql -h 127.0.0.1 -P 3307 -u root -proot \
+  -e "SELECT Id, AssetId, ScanType, Status FROM mini_asm.ScanJobs;"
+
+Id                                      AssetId                                  ScanType   Status
+ee4c07da-e47d-4a92-8963-e4141d880cab    7d02d100-f092-4884-a69f-8b9f61c05454     dns        running
 ```
 
 ---
@@ -249,19 +278,20 @@ jobs:
 
 **Files:**
 - `Dockerfile` — multi-stage build (sdk:8.0 → aspnet:8.0)
-- `docker-compose.yml` — service + volume cho SQLite DB
+- `docker-compose.yml` — 2 services: `db` (MySQL 8) + `backend` (API), volume cho MySQL data
 
 **Cách chạy:**
 
 ```bash
 cd "Module Dev/Day3"
 
-# Build và start
+# Build và start (db + backend)
 docker compose up -d --build
 
 # Kiểm tra
 docker compose ps
-# → mini-easm-api   running   0.0.0.0:8080->8080/tcp
+# → mini-easm-db    running (healthy)   0.0.0.0:3307->3306/tcp
+# → mini-easm-api    running (healthy)   0.0.0.0:8080->8080/tcp
 
 # Health check
 curl http://localhost:8080/health
@@ -275,22 +305,37 @@ docker compose down
 
 ```yaml
 services:
+  db:
+    image: mysql:8
+    container_name: mini-easm-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mini_asm
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+
   backend:
     build: .
     container_name: mini-easm-api
     ports:
       - "8080:8080"
-    volumes:
-      - db_data:/data          # SQLite DB persist qua restart
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=db;Port=3306;Database=mini_asm;User=root;Password=root;
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
 
 volumes:
-  db_data:
+  mysql_data:
 ```
 
-**SQLite path trong container:** `/data/mini_asm.db` (mount từ Docker volume)
+**Lưu ý:** `backend` nói chuyện với `db` qua tên service Docker (`Server=db;Port=3306`), khác với connection string `localhost:3307` dùng khi chạy `dotnet run` trực tiếp trên máy host.
 
 ---
 

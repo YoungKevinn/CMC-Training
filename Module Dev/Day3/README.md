@@ -3,7 +3,7 @@
 EASM (External Attack Surface Management) API viết bằng **C# / ASP.NET Core 8**.
 
 Tiếp nối từ Day 1 (Asset CRUD với in-memory storage), Day 3 thêm:
-- **Bài 1**: SQLite database thay thế in-memory storage (EF Core)
+- **Bài 1**: MySQL database thay thế in-memory storage (EF Core + Pomelo)
 - **Bài 2**: Scan API với 9 loại scanner (dns, whois, subdomain, cert_trans, asn, ip, port, ssl, tech)
 - **Bài 3**: Unit tests với xUnit + Moq
 - **Bài 4**: Frontend dashboard + CORS
@@ -13,12 +13,20 @@ Tiếp nối từ Day 1 (Asset CRUD với in-memory storage), Day 3 thêm:
 ## Yêu cầu
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- MySQL Server đang chạy (local hoặc Docker)
 
 ```bash
 dotnet --version   # cần >= 8.0
 ```
 
-Không cần Docker, không cần cài database riêng — dùng **SQLite** (file `mini_asm.db` tự tạo).
+**Database:** MySQL qua EF Core + Pomelo.EntityFrameworkCore.MySql.
+
+Connection string trong `appsettings.json`:
+```json
+"DefaultConnection": "Server=localhost;Port=3307;Database=mini_asm;User=root;Password=root;"
+```
+
+Đổi `Port`/`User`/`Password` cho phù hợp với MySQL instance của bạn. Database `mini_asm` và toàn bộ schema (`Assets`, `ScanJobs`, `ScanResults`) tự tạo khi server start lần đầu (`db.Database.EnsureCreated()`) — không cần chạy migration tay.
 
 ---
 
@@ -32,7 +40,7 @@ dotnet restore
 dotnet run
 ```
 
-Server chạy tại `http://localhost:8080`. File DB `mini_asm.db` được tạo tự động lần đầu.
+Server chạy tại `http://localhost:8080`. Schema MySQL tự tạo lần đầu kết nối.
 
 ### Frontend
 
@@ -66,7 +74,7 @@ Day3/
 │   │   ├── ScanJobsController.cs  # /scan-jobs endpoints
 │   │   └── HealthController.cs
 │   ├── Data/
-│   │   └── AppDbContext.cs        # EF Core DbContext (SQLite)
+│   │   └── AppDbContext.cs        # EF Core DbContext (MySQL via Pomelo)
 │   ├── DTOs/                      # Request / Response objects
 │   ├── Models/                    # Asset, ScanJob, ScanResult
 │   ├── Scanners/                  # 9 scanner implementations
@@ -191,7 +199,7 @@ curl http://localhost:8080/health
 
 ## Ghi chú kỹ thuật
 
-- **Database**: SQLite với EF Core — không cần setup, file `mini_asm.db` tự tạo khi start server
+- **Database**: MySQL với EF Core (Pomelo.EntityFrameworkCore.MySql) — schema tự tạo qua `EnsureCreated()`, các cột có index (`Type`, `Status`, `ScanType`, ...) được giới hạn `HasMaxLength` vì MySQL không index được cột `longtext`
 - **Scan async**: Mỗi scan chạy background qua `Channel<string>` + `IHostedService` (`ScanWorker`)
 - **CORS**: Đã cấu hình `AllowAll` cho frontend gọi được từ bất kỳ origin
 - **JSON**: Snake_case tự động cho toàn bộ API

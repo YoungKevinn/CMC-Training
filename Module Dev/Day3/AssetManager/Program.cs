@@ -23,9 +23,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy =>
         policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
-// Database: SQLite via EF Core (Bài 1)
+// Database: MySQL via EF Core + Pomelo (Bài 1)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 builder.Services.AddDbContext<AppDbContext>(opts =>
-    opts.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    opts.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
 // Storage layer
 builder.Services.AddScoped<IAssetStorage, EfAssetStorage>();

@@ -1,4 +1,20 @@
 services:
+  db:
+    image: mysql:8
+    container_name: mini-easm-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mini_asm
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -6,11 +22,12 @@ services:
     container_name: mini-easm-api
     ports:
       - "8080:8080"
-    volumes:
-      - db_data:/data
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Data Source=/data/mini_asm.db
+      - ConnectionStrings__DefaultConnection=Server=db;Port=3306;Database=mini_asm;User=root;Password=root;
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -20,5 +37,5 @@ services:
       start_period: 10s
 
 volumes:
-  db_data:
+  mysql_data:
     driver: local
