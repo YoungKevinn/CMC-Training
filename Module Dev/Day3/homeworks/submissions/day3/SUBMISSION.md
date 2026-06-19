@@ -23,7 +23,11 @@
 
 ## Link Repository
 
-https://github.com/YoungKevin10/AssetManager
+https://github.com/YoungKevinn/CMC-Training
+
+## Pull Request
+
+https://github.com/YoungKevinn/CMC-Training/pull/1
 
 ---
 
