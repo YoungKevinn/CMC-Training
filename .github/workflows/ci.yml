@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main, homework, homework-final]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Job 1: Build & Test ──────────────────────────────────────────────────
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Module Dev/Day3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore AssetManager/AssetManager.csproj
+
+      - name: Build
+        run: dotnet build AssetManager/AssetManager.csproj --no-restore --configuration Release
+
+      - name: Restore test dependencies
+        run: dotnet restore AssetManager.Tests/AssetManager.Tests.csproj
+
+      - name: Run tests
+        run: dotnet test AssetManager.Tests/AssetManager.Tests.csproj --no-restore --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: "Module Dev/Day3/AssetManager.Tests/TestResults/"
+
+  # ── Job 2: Security — Vulnerable NuGet Packages ──────────────────────────
+  security-nuget:
+    name: Security — NuGet Vulnerabilities
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: "Module Dev/Day3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore packages
+        run: dotnet restore AssetManager/AssetManager.csproj
+
+      - name: Check for vulnerable packages
+        run: dotnet list AssetManager/AssetManager.csproj package --vulnerable --include-transitive
+
+  # ── Job 3: Security — Secret Detection (Gitleaks) ────────────────────────
+  security-secrets:
+    name: Security — Secret Detection
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Job 4: Security — Trivy Filesystem Scan ──────────────────────────────
+  security-trivy:
+    name: Security — Trivy Scan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "Module Dev/Day3"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+          format: "table"
