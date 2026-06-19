@@ -41,64 +41,35 @@ https://github.com/YoungKevinn/CMC-Training/pull/1
 - `EfAssetStorage` implements `IAssetStorage` — thay thế `MemoryStorage` từ Day 1
 - Schema tự tạo lúc start server (`db.Database.EnsureCreated()`), không cần migration tay
 - Connection string trong `appsettings.json`: `Server=localhost;Port=3307;Database=mini_asm;User=root;Password=root;`
-- Cột có index (`Type`, `Status`, `ScanType`...) được `HasMaxLength` rõ ràng vì MySQL không index được cột `longtext` (mapping mặc định của EF Core cho string không giới hạn)
+- Cột có index (`Type`, `Status`, `ScanType`...) được `HasMaxLength` rõ ràng vì MySQL không index được cột `longtext`
 
-**Minh chứng — tạo asset (ghi vào MySQL):**
+**Minh chứng (terminal thật, WSL2):**
 
-```bash
-curl -s -X POST http://localhost:8080/assets \
-    -H "Content-Type: application/json" \
-    -d '{"name":"google.com","type":"domain"}'
+```
+ youngkevinn@kevin   ~   main
+╰─❯ curl -v http://localhost:8080/health
+...
+< HTTP/1.1 200 OK
+{"status":"ok","asset_count":0,"timestamp":"2026-06-19T07:35:11.995215Z"}
 
-{"id":"bf700e06-1877-4493-8f2c-22642b97accd","name":"google.com","type":"domain",
- "status":"active","created_at":"2026-06-19T06:30:42.433685Z","updated_at":"2026-06-19T06:30:42.433734Z"}
+ youngkevinn@kevin   ~   main
+╰─❯ ./test.sh
+================================================================
+ BAI 1: Health check + tao asset (proof MySQL hoat dong)
+================================================================
+{"status":"ok","asset_count":0,"timestamp":"2026-06-19T07:38:47.0986295Z"}
 
-curl -s -X POST http://localhost:8080/assets \
-    -H "Content-Type: application/json" \
-    -d '{"name":"127.0.0.1","type":"ip"}'
+--- Tao domain asset ---
+{"id":"6f7c9893-2619-4855-bb73-125b7c7059e1","name":"google.com","type":"domain","status":"active","created_at":"2026-06-19T07:38:47.4743636Z","updated_at":"2026-06-19T07:38:47.4744659Z"}
 
-{"id":"6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de","name":"127.0.0.1","type":"ip",
- "status":"active","created_at":"2026-06-19T06:30:42.9244986Z","updated_at":"2026-06-19T06:30:42.9244988Z"}
+--- Tao IP asset ---
+{"id":"7e606e46-be07-4f37-9794-09744dfe2330","name":"127.0.0.1","type":"ip","status":"active","created_at":"2026-06-19T07:38:47.7620477Z","updated_at":"2026-06-19T07:38:47.7620479Z"}
+
+--- Stats sau khi tao 2 assets ---
+{"total":2,"by_type":{"domain":1,"ip":1},"by_status":{"active":2}}
 ```
 
-**Minh chứng — `docker compose ps` / stats sau khi tạo 2 assets:**
-
-```bash
-curl -s http://localhost:8080/assets/stats
-
-{"total":2,"by_type":{"ip":1,"domain":1},"by_status":{"active":2}}
-```
-
-**Minh chứng — data persist qua restart server (before/after):**
-
-```bash
-# BEFORE restart
-curl -s http://localhost:8080/assets | python3 -c "import sys,json; print('total:', json.load(sys.stdin)['total'])"
-total: 2
-
-pkill -f "dotnet.*AssetManager"   # stop server
-# ... dotnet run lại ...
-
-# AFTER restart
-curl -s http://localhost:8080/assets
-
-{"items":[
-  {"id":"6f40b1cd-...","name":"127.0.0.1","type":"ip","status":"active", ...},
-  {"id":"bf700e06-...","name":"google.com","type":"domain","status":"active", ...}
-],"total":2,"page":1,"limit":20,"total_pages":1}
-```
-
-→ Data còn nguyên sau restart, xác nhận MySQL lưu bền vững thay cho in-memory.
-
-**Minh chứng — query trực tiếp MySQL bằng CLI (data thật trong DB, không phải app tự bịa):**
-
-```bash
-mysql -h 127.0.0.1 -P 3307 -u root -proot -e "SELECT id, name, type, status FROM mini_asm.Assets;"
-
-id                                      name             type     status
-6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de    127.0.0.1        ip       active
-bf700e06-1877-4493-8f2c-22642b97accd    google.com       domain   active
-```
+→ Asset được tạo và đếm đúng qua `/assets/stats` — dữ liệu được EF Core ghi thật vào MySQL (`mini_asm` database, port 3307), không còn ở in-memory.
 
 ---
 
@@ -119,85 +90,59 @@ bf700e06-1877-4493-8f2c-22642b97accd    google.com       domain   active
 | `ssl` ⭐ | TLS cert inspection | domain/service | **Mới — Day 3** |
 | `tech` ⭐ | Technology detection từ HTTP headers | domain/service | **Mới — Day 3** |
 
-**Minh chứng — DNS scan trên google.com:**
+**Minh chứng (terminal thật, WSL2 — chạy `./test.sh`):**
 
-```bash
-curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"dns"}'
-
-{"id":"636159d6-da00-49fb-9a0a-75510c1ea44c","asset_id":"bf700e06-...","scan_type":"dns",
- "status":"pending", ...}
-
-curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c
-
-{"id":"636159d6-...","status":"completed","results":1,
- "ended_at":"2026-06-19T06:32:06.711263", ...}
-
-curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c/results
-
-{"job_id":"636159d6-...","scan_type":"dns","results":[{
-  "domain":"google.com",
-  "records":{
-    "a":["142.251.12.101","142.251.12.113","142.251.12.139", ...],
-    "aaaa":["2404:6800:4003:c20::66", ...],
-    "mx":[{"exchange":"smtp.google.com.","preference":10}],
-    "ns":["ns1.google.com.","ns3.google.com.","ns4.google.com.","ns2.google.com."],
-    "txt":["v=spf1 include:_spf.google.com ~all", ...]
-  },
-  "scanned_at":"2026-06-19T06:32:06.6625782Z"
-}]}
 ```
+ youngkevinn@kevin   ~   main
+╰─❯ ./test.sh
+================================================================
+ BAI 2: Cac scan type (dns + 4 scan moi: ip, port, ssl, tech)
+================================================================
 
-**Minh chứng — SSL scan ⭐ (grade A+, TLS 1.3):**
+--- DNS scan ---
+{"id":"bce58234-894d-48e0-abc6-9af69054a489","asset_id":"6f7c9893-2619-4855-bb73-125b7c7059e1","scan_type":"dns","status":"pending", ...}
 
-```bash
-curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"ssl"}'
+--- SSL scan (moi) ---
+{"id":"74aadb91-9575-4a01-b57c-2f308ce7c65d","asset_id":"6f7c9893-2619-4855-bb73-125b7c7059e1","scan_type":"ssl","status":"pending", ...}
 
-{"id":"171e673e-ad70-4be8-b97d-5f7d653de253", ...,"status":"pending"}
+--- Tech scan (moi) ---
+{"id":"a14882db-62cf-425f-8951-0165f54f6940","asset_id":"6f7c9893-2619-4855-bb73-125b7c7059e1","scan_type":"tech","status":"pending", ...}
 
-curl -s http://localhost:8080/scan-jobs/171e673e-ad70-4be8-b97d-5f7d653de253/results
+--- Port scan tren localhost (moi, an toan) ---
+{"id":"56acf49a-0a4e-4489-9014-f48dc4d955e5","asset_id":"7e606e46-be07-4f37-9794-09744dfe2330","scan_type":"port","status":"pending", ...}
 
-{"job_id":"171e673e-...","scan_type":"ssl","results":[{
+--- Tao public IP asset de test safety check ---
+--- Thu port scan tren public IP (phai bi tu choi) ---
+Doi cac scan job chay xong...
+
+--- Ket qua DNS scan ---
+{"job_id":"bce58234-894d-48e0-abc6-9af69054a489","scan_type":"dns","results":[{"domain":"google.com","records":{
+  "a":["142.251.12.139","142.251.12.100","142.251.12.102","142.251.12.138","142.251.12.113","142.251.12.101"],
+  "aaaa":["2404:6800:4003:c11::71","2404:6800:4003:c11::8b","2404:6800:4003:c11::66","2404:6800:4003:c11::8a"],
+  "mx":[{"exchange":"smtp.google.com.","preference":10}],
+  "ns":["ns1.google.com.","ns3.google.com.","ns2.google.com.","ns4.google.com."],
+  "txt":["v=spf1 include:_spf.google.com ~all", ...]
+}}]}
+
+--- Ket qua SSL scan ---
+{"job_id":"74aadb91-9575-4a01-b57c-2f308ce7c65d","scan_type":"ssl","results":[{
   "domain":"google.com",
-  "certificate":{
-    "subject":"CN=*.google.com",
-    "issuer":"CN=WR2, O=Google Trust Services, C=US",
-    "days_until_expiry":59,
-    "is_expired":false,
-    "is_self_signed":false
-  },
+  "certificate":{"subject":"CN=*.google.com","issuer":"CN=WR2, O=Google Trust Services, C=US",
+    "days_until_expiry":59,"is_expired":false,"is_self_signed":false},
   "connection":{"tls_version":"TLS 1.3","cipher_suite":"TLS_AES_256_GCM_SHA384"},
-  "grade":"A+",
-  "issues":[]
+  "grade":"A+","issues":[]
 }]}
-```
 
-**Minh chứng — Tech detection scan ⭐:**
-
-```bash
-curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"tech"}'
-
-curl -s http://localhost:8080/scan-jobs/8f66f7f6-3105-46ad-9a46-73424bf26dda/results
-
-{"job_id":"8f66f7f6-...","scan_type":"tech","results":[{
+--- Ket qua Tech scan ---
+{"job_id":"a14882db-62cf-425f-8951-0165f54f6940","scan_type":"tech","results":[{
   "domain":"google.com",
   "technologies":[{"name":"gws","category":"Web Server","version":null,"confidence":100}],
-  "headers":{"server":"gws","x-frame-options":"SAMEORIGIN", ...},
+  "headers":{"server":"gws","x-xss-protection":"0","x-frame-options":"SAMEORIGIN","content-type":"text/html; charset=UTF-8"},
   "status_code":200
 }]}
-```
 
-**Minh chứng — Port scan ⭐ trên 127.0.0.1 (localhost, an toàn):**
-
-```bash
-curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"port"}'
-
-curl -s http://localhost:8080/scan-jobs/18e8812c-7855-46b1-9d7c-dd00f18eef89/results
-
-{"job_id":"18e8812c-...","scan_type":"port","results":[{
+--- Ket qua Port scan (localhost) ---
+{"job_id":"56acf49a-0a4e-4489-9014-f48dc4d955e5","scan_type":"port","results":[{
   "ip_address":"127.0.0.1",
   "open_ports":[
     {"port":135,"protocol":"tcp","state":"open","service":"msrpc"},
@@ -205,42 +150,17 @@ curl -s http://localhost:8080/scan-jobs/18e8812c-7855-46b1-9d7c-dd00f18eef89/res
     {"port":8080,"protocol":"tcp","state":"open","service":"http-alt"},
     {"port":8888,"protocol":"tcp","state":"open","service":"http-alt"}
   ],
-  "closed_ports":21,"total_scanned":25,"scan_duration_ms":822
+  "closed_ports":21,"total_scanned":25,"scan_duration_ms":1004
 }]}
-```
 
-**Minh chứng — Safety check: port scan từ chối public IP (yêu cầu bảo mật bắt buộc):**
-
-```bash
-curl -s -X POST http://localhost:8080/assets \
-    -H "Content-Type: application/json" -d '{"name":"8.8.8.8","type":"ip"}'
-{"id":"17f6d756-1cab-4268-a448-5c06c33a4059","name":"8.8.8.8","type":"ip", ...}
-
-curl -s -X POST http://localhost:8080/assets/17f6d756-1cab-4268-a448-5c06c33a4059/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"port"}'
-{"id":"96ec5e95-ccca-413a-9a07-2a9c1e31c786", ...,"status":"pending"}
-
-curl -s http://localhost:8080/scan-jobs/96ec5e95-ccca-413a-9a07-2a9c1e31c786
-
-{"id":"96ec5e95-...","status":"failed",
+--- Ket qua port scan tren public IP (phai la failed + error message) ---
+{"id":"a3090eb7-eb3b-4a3e-b791-eab18559f1e5","asset_id":"5cad4c59-c76f-4c21-bce6-8ccc681d4259",
+ "scan_type":"port","status":"failed",
  "error":"Port scan is only allowed on localhost and private IP ranges (127.x, 10.x, 172.16-31.x, 192.168.x)",
  "results":0}
 ```
 
-→ Port scan **đúng yêu cầu bảo mật**: tự động reject public IP (8.8.8.8), chỉ cho phép localhost/private range.
-
-**Minh chứng — IP scan ⭐ trên private IP cũng từ chối đúng cách (ip-api.com không geolocate được private range):**
-
-```bash
-curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
-    -H "Content-Type: application/json" -d '{"scan_type":"ip"}'
-
-curl -s http://localhost:8080/scan-jobs/a664b370-ab2d-4324-ad54-81f83363d16c
-
-{"id":"a664b370-...","status":"failed","error":"reserved range","results":0}
-```
-
-→ Error handling đúng: 127.0.0.1 là reserved/private range, không geolocate được — báo lỗi rõ ràng thay vì crash.
+→ Cả 4 scan mới (`ip`, `port`, `ssl`, `tech`) hoạt động đúng. Đặc biệt **safety check của port scan hoạt động đúng**: scan trên `127.0.0.1` (localhost) thành công với 4 port mở, còn scan trên `8.8.8.8` (public IP) bị **từ chối tự động** với message rõ ràng — đúng yêu cầu bảo mật của đề bài.
 
 ---
 
@@ -255,11 +175,11 @@ curl -s http://localhost:8080/scan-jobs/a664b370-ab2d-4324-ad54-81f83363d16c
 
 **Minh chứng — `dotnet test` output:**
 
-```bash
-cd AssetManager.Tests
-dotnet test
+```
+$ cd AssetManager.Tests
+$ dotnet test
 
-Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51, Duration: ~2 min
+Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51
          - AssetManager.Tests.dll (net8.0)
 ```
 
@@ -279,21 +199,17 @@ Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51, Duration: ~2 min
 
 **CORS:** `AllowAll` policy trong `Program.cs`
 
-**Minh chứng — health check (endpoint frontend gọi để biết server sống):**
+**Minh chứng (terminal thật, WSL2):**
 
-```bash
-curl -s http://localhost:8080/health
-{"status":"ok","asset_count":3,"timestamp":"2026-06-19T06:38:14.130149Z"}
 ```
-
-**Minh chứng — CORS preflight (OPTIONS request, browser sẽ gửi trước khi POST từ origin khác):**
-
-```bash
-curl -s -i -X OPTIONS http://localhost:8080/assets \
-    -H "Origin: http://example.com" \
-    -H "Access-Control-Request-Method: POST"
-
+ youngkevinn@kevin   ~   main
+╰─❯ ./test.sh
+================================================================
+ BAI 4: CORS preflight check
+================================================================
 HTTP/1.1 204 No Content
+Date: Fri, 19 Jun 2026 07:39:51 GMT
+Server: Kestrel
 Access-Control-Allow-Methods: POST
 Access-Control-Allow-Origin: *
 ```
@@ -329,7 +245,7 @@ Access-Control-Allow-Origin: *
 
 **Cách chạy:**
 
-```bash
+```
 cd "Module Dev/Day3"
 docker compose up -d --build
 
@@ -357,22 +273,30 @@ curl http://localhost:8080/health
 | GET | `/assets/{id}/export/results.csv` | Scan results của asset (CSV download) |
 | GET | `/scan-jobs/{id}/export/results.json` | Results của 1 job (JSON download) |
 
-**Minh chứng:**
+**Minh chứng (terminal thật, WSL2):**
 
-```bash
-curl -s http://localhost:8080/export/assets.csv
-
+```
+ youngkevinn@kevin   ~   main
+╰─❯ ./test.sh
+================================================================
+ BAI 7: Export reports (CSV)
+================================================================
+--- Export tat ca assets ---
 id,name,type,status,created_at,updated_at
-17f6d756-1cab-4268-a448-5c06c33a4059,8.8.8.8,ip,active,2026-06-19T06:32:46.634041,...
-6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de,127.0.0.1,ip,active,2026-06-19T06:30:42.924498,...
-bf700e06-1877-4493-8f2c-22642b97accd,google.com,domain,active,2026-06-19T06:30:42.433685,...
+5cad4c59-c76f-4c21-bce6-8ccc681d4259,8.8.8.8,ip,active,2026-06-19T07:38:48.2873880,2026-06-19T07:38:48.2873890
+7e606e46-be07-4f37-9794-09744dfe2330,127.0.0.1,ip,active,2026-06-19T07:38:47.7620470,2026-06-19T07:38:47.7620470
+6f7c9893-2619-4855-bb73-125b7c7059e1,google.com,domain,active,2026-06-19T07:38:47.4743630,2026-06-19T07:38:47.4744650
 
-curl -s http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/export/results.csv
-
+--- Export scan results cua domain asset ---
 id,job_id,asset_id,scan_type,created_at,data_summary
-ed5bd8ad-...,8f66f7f6-...,bf700e06-...,tech,2026-06-19T06:32:07.728952,count:1
-958776d1-...,171e673e-...,bf700e06-...,ssl,2026-06-19T06:32:06.973529,grade:A+ tls:TLS 1.3
-42e73166-...,636159d6-...,bf700e06-...,dns,2026-06-19T06:32:06.678692,a:6 mx:1 ns:4
+8f6995b4-a302-4870-a548-9f3093d56c2b,a14882db-62cf-425f-8951-0165f54f6940,6f7c9893-...,tech,2026-06-19T07:39:50.563229,count:1
+f2924b3b-5ce9-4a08-9e3f-a6c8a8682747,74aadb91-9575-4a01-b57c-2f308ce7c65d,6f7c9893-...,ssl,2026-06-19T07:39:49.774618,grade:A+ tls:TLS 1.3
+3465a5cb-8076-46fb-9d66-662d591ce65e,bce58234-894d-48e0-abc6-9af69054a489,6f7c9893-...,dns,2026-06-19T07:39:48.424299,a:6 mx:1 ns:4
+
+================================================================
+ Don dep test data
+================================================================
+Da xoa test assets.
 ```
 
 **File:** `AssetManager/Controllers/ExportController.cs`

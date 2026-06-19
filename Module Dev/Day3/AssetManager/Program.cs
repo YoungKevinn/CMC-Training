@@ -79,4 +79,7 @@ using (var scope = app.Services.CreateScope())
 app.UseCors("AllowAll");
 app.MapControllers();
 
-app.Run("http://localhost:8080");
+// Bind to all interfaces (not just literal "localhost") so the API is
+// reachable from WSL2 — Windows' loopback port-proxy for WSL2 only relays
+// reliably to listeners bound on 0.0.0.0, not ones bound to "localhost".
+app.Run("http://0.0.0.0:8080");
