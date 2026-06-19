@@ -173,15 +173,27 @@ Doi cac scan job chay xong...
 - `Scanners/PortScannerTests.cs` — test port scanner + `IsPrivateOrLocalhost` safety check
 - `Services/AssetServiceTests.cs` — 14 test cases với Moq mock (Bonus 3.3)
 
-**Minh chứng — `dotnet test` output:**
+**Minh chứng — `dotnet test` output (PowerShell, máy thật):**
 
 ```
-$ cd AssetManager.Tests
-$ dotnet test
+PS C:\WINDOWS\system32> cd "D:\Documents\TaiLieu\CMC-Training\Module Dev\Day3\AssetManager.Tests"
+PS D:\...\AssetManager.Tests> dotnet test
 
-Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51
-         - AssetManager.Tests.dll (net8.0)
+Restore complete (3.2s)
+  AssetManager succeeded (3.8s) → ...\AssetManager\bin\Debug\net8.0\AssetManager.dll
+  AssetManager.Tests succeeded → bin\Debug\net8.0\AssetManager.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 8.0.28)
+[xUnit.net 00:00:00.25]   Discovering: AssetManager.Tests
+[xUnit.net 00:00:00.29]   Discovered:  AssetManager.Tests
+[xUnit.net 00:00:00.29]   Starting:    AssetManager.Tests
+[xUnit.net 00:03:01.27]   Finished:    AssetManager.Tests
+  AssetManager.Tests test succeeded (199.4s)
+
+Test summary: total: 51, failed: 0, succeeded: 51, skipped: 0, duration: 182.1s
+Build succeeded in 208.1s
 ```
+
+(Test chạy 51 case thật — bao gồm DNS lookup, TLS handshake, port scan localhost — nên mất ~3 phút, không phải mock toàn bộ.)
 
 ---
 
