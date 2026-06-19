@@ -46,14 +46,14 @@ https://github.com/YoungKevinn/CMC-Training/pull/1
 **Minh chứng — tạo asset (ghi vào MySQL):**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets \
+curl -s -X POST http://localhost:8080/assets \
     -H "Content-Type: application/json" \
     -d '{"name":"google.com","type":"domain"}'
 
 {"id":"bf700e06-1877-4493-8f2c-22642b97accd","name":"google.com","type":"domain",
  "status":"active","created_at":"2026-06-19T06:30:42.433685Z","updated_at":"2026-06-19T06:30:42.433734Z"}
 
-$ curl -s -X POST http://localhost:8080/assets \
+curl -s -X POST http://localhost:8080/assets \
     -H "Content-Type: application/json" \
     -d '{"name":"127.0.0.1","type":"ip"}'
 
@@ -64,7 +64,7 @@ $ curl -s -X POST http://localhost:8080/assets \
 **Minh chứng — `docker compose ps` / stats sau khi tạo 2 assets:**
 
 ```bash
-$ curl -s http://localhost:8080/assets/stats
+curl -s http://localhost:8080/assets/stats
 
 {"total":2,"by_type":{"ip":1,"domain":1},"by_status":{"active":2}}
 ```
@@ -73,14 +73,14 @@ $ curl -s http://localhost:8080/assets/stats
 
 ```bash
 # BEFORE restart
-$ curl -s http://localhost:8080/assets | python3 -c "import sys,json; print('total:', json.load(sys.stdin)['total'])"
+curl -s http://localhost:8080/assets | python3 -c "import sys,json; print('total:', json.load(sys.stdin)['total'])"
 total: 2
 
-$ pkill -f "dotnet.*AssetManager"   # stop server
+pkill -f "dotnet.*AssetManager"   # stop server
 # ... dotnet run lại ...
 
 # AFTER restart
-$ curl -s http://localhost:8080/assets
+curl -s http://localhost:8080/assets
 
 {"items":[
   {"id":"6f40b1cd-...","name":"127.0.0.1","type":"ip","status":"active", ...},
@@ -93,7 +93,7 @@ $ curl -s http://localhost:8080/assets
 **Minh chứng — query trực tiếp MySQL bằng CLI (data thật trong DB, không phải app tự bịa):**
 
 ```bash
-$ mysql -h 127.0.0.1 -P 3307 -u root -proot -e "SELECT id, name, type, status FROM mini_asm.Assets;"
+mysql -h 127.0.0.1 -P 3307 -u root -proot -e "SELECT id, name, type, status FROM mini_asm.Assets;"
 
 id                                      name             type     status
 6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de    127.0.0.1        ip       active
@@ -122,18 +122,18 @@ bf700e06-1877-4493-8f2c-22642b97accd    google.com       domain   active
 **Minh chứng — DNS scan trên google.com:**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
+curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"dns"}'
 
 {"id":"636159d6-da00-49fb-9a0a-75510c1ea44c","asset_id":"bf700e06-...","scan_type":"dns",
  "status":"pending", ...}
 
-$ curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c
+curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c
 
 {"id":"636159d6-...","status":"completed","results":1,
  "ended_at":"2026-06-19T06:32:06.711263", ...}
 
-$ curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c/results
+curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c/results
 
 {"job_id":"636159d6-...","scan_type":"dns","results":[{
   "domain":"google.com",
@@ -151,12 +151,12 @@ $ curl -s http://localhost:8080/scan-jobs/636159d6-da00-49fb-9a0a-75510c1ea44c/r
 **Minh chứng — SSL scan ⭐ (grade A+, TLS 1.3):**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
+curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"ssl"}'
 
 {"id":"171e673e-ad70-4be8-b97d-5f7d653de253", ...,"status":"pending"}
 
-$ curl -s http://localhost:8080/scan-jobs/171e673e-ad70-4be8-b97d-5f7d653de253/results
+curl -s http://localhost:8080/scan-jobs/171e673e-ad70-4be8-b97d-5f7d653de253/results
 
 {"job_id":"171e673e-...","scan_type":"ssl","results":[{
   "domain":"google.com",
@@ -176,10 +176,10 @@ $ curl -s http://localhost:8080/scan-jobs/171e673e-ad70-4be8-b97d-5f7d653de253/r
 **Minh chứng — Tech detection scan ⭐:**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
+curl -s -X POST http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"tech"}'
 
-$ curl -s http://localhost:8080/scan-jobs/8f66f7f6-3105-46ad-9a46-73424bf26dda/results
+curl -s http://localhost:8080/scan-jobs/8f66f7f6-3105-46ad-9a46-73424bf26dda/results
 
 {"job_id":"8f66f7f6-...","scan_type":"tech","results":[{
   "domain":"google.com",
@@ -192,10 +192,10 @@ $ curl -s http://localhost:8080/scan-jobs/8f66f7f6-3105-46ad-9a46-73424bf26dda/r
 **Minh chứng — Port scan ⭐ trên 127.0.0.1 (localhost, an toàn):**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
+curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"port"}'
 
-$ curl -s http://localhost:8080/scan-jobs/18e8812c-7855-46b1-9d7c-dd00f18eef89/results
+curl -s http://localhost:8080/scan-jobs/18e8812c-7855-46b1-9d7c-dd00f18eef89/results
 
 {"job_id":"18e8812c-...","scan_type":"port","results":[{
   "ip_address":"127.0.0.1",
@@ -212,15 +212,15 @@ $ curl -s http://localhost:8080/scan-jobs/18e8812c-7855-46b1-9d7c-dd00f18eef89/r
 **Minh chứng — Safety check: port scan từ chối public IP (yêu cầu bảo mật bắt buộc):**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets \
+curl -s -X POST http://localhost:8080/assets \
     -H "Content-Type: application/json" -d '{"name":"8.8.8.8","type":"ip"}'
 {"id":"17f6d756-1cab-4268-a448-5c06c33a4059","name":"8.8.8.8","type":"ip", ...}
 
-$ curl -s -X POST http://localhost:8080/assets/17f6d756-1cab-4268-a448-5c06c33a4059/scan \
+curl -s -X POST http://localhost:8080/assets/17f6d756-1cab-4268-a448-5c06c33a4059/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"port"}'
 {"id":"96ec5e95-ccca-413a-9a07-2a9c1e31c786", ...,"status":"pending"}
 
-$ curl -s http://localhost:8080/scan-jobs/96ec5e95-ccca-413a-9a07-2a9c1e31c786
+curl -s http://localhost:8080/scan-jobs/96ec5e95-ccca-413a-9a07-2a9c1e31c786
 
 {"id":"96ec5e95-...","status":"failed",
  "error":"Port scan is only allowed on localhost and private IP ranges (127.x, 10.x, 172.16-31.x, 192.168.x)",
@@ -232,10 +232,10 @@ $ curl -s http://localhost:8080/scan-jobs/96ec5e95-ccca-413a-9a07-2a9c1e31c786
 **Minh chứng — IP scan ⭐ trên private IP cũng từ chối đúng cách (ip-api.com không geolocate được private range):**
 
 ```bash
-$ curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
+curl -s -X POST http://localhost:8080/assets/6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de/scan \
     -H "Content-Type: application/json" -d '{"scan_type":"ip"}'
 
-$ curl -s http://localhost:8080/scan-jobs/a664b370-ab2d-4324-ad54-81f83363d16c
+curl -s http://localhost:8080/scan-jobs/a664b370-ab2d-4324-ad54-81f83363d16c
 
 {"id":"a664b370-...","status":"failed","error":"reserved range","results":0}
 ```
@@ -256,8 +256,8 @@ $ curl -s http://localhost:8080/scan-jobs/a664b370-ab2d-4324-ad54-81f83363d16c
 **Minh chứng — `dotnet test` output:**
 
 ```bash
-$ cd AssetManager.Tests
-$ dotnet test
+cd AssetManager.Tests
+dotnet test
 
 Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51, Duration: ~2 min
          - AssetManager.Tests.dll (net8.0)
@@ -282,14 +282,14 @@ Passed!  - Failed: 0, Passed: 51, Skipped: 0, Total: 51, Duration: ~2 min
 **Minh chứng — health check (endpoint frontend gọi để biết server sống):**
 
 ```bash
-$ curl -s http://localhost:8080/health
+curl -s http://localhost:8080/health
 {"status":"ok","asset_count":3,"timestamp":"2026-06-19T06:38:14.130149Z"}
 ```
 
 **Minh chứng — CORS preflight (OPTIONS request, browser sẽ gửi trước khi POST từ origin khác):**
 
 ```bash
-$ curl -s -i -X OPTIONS http://localhost:8080/assets \
+curl -s -i -X OPTIONS http://localhost:8080/assets \
     -H "Origin: http://example.com" \
     -H "Access-Control-Request-Method: POST"
 
@@ -360,14 +360,14 @@ curl http://localhost:8080/health
 **Minh chứng:**
 
 ```bash
-$ curl -s http://localhost:8080/export/assets.csv
+curl -s http://localhost:8080/export/assets.csv
 
 id,name,type,status,created_at,updated_at
 17f6d756-1cab-4268-a448-5c06c33a4059,8.8.8.8,ip,active,2026-06-19T06:32:46.634041,...
 6f40b1cd-d7f4-4c81-b6f1-d545d71dc9de,127.0.0.1,ip,active,2026-06-19T06:30:42.924498,...
 bf700e06-1877-4493-8f2c-22642b97accd,google.com,domain,active,2026-06-19T06:30:42.433685,...
 
-$ curl -s http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/export/results.csv
+curl -s http://localhost:8080/assets/bf700e06-1877-4493-8f2c-22642b97accd/export/results.csv
 
 id,job_id,asset_id,scan_type,created_at,data_summary
 ed5bd8ad-...,8f66f7f6-...,bf700e06-...,tech,2026-06-19T06:32:07.728952,count:1
