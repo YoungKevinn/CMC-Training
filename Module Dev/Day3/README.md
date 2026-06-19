@@ -7,6 +7,9 @@ Tiếp nối từ Day 1 (Asset CRUD với in-memory storage), Day 3 thêm:
 - **Bài 2**: Scan API với 9 loại scanner (dns, whois, subdomain, cert_trans, asn, ip, port, ssl, tech)
 - **Bài 3**: Unit tests với xUnit + Moq
 - **Bài 4**: Frontend dashboard + CORS
+- **Bài 5 (Bonus)**: CI/CD với GitHub Actions (build, test, security scans)
+- **Bài 6 (Bonus)**: Docker Compose (MySQL + API)
+- **Bài 7 (Bonus)**: Export Reports — CSV/JSON
 
 ---
 
@@ -68,10 +71,12 @@ dotnet test --collect:"XPlat Code Coverage"
 
 ```
 Day3/
+├── .github/workflows/ci.yml       # CI: build, test, security scans (Bài 5)
 ├── AssetManager/                  # Web API chính
 │   ├── Controllers/               # HTTP endpoints
 │   │   ├── AssetsController.cs    # CRUD + scan triggers
 │   │   ├── ScanJobsController.cs  # /scan-jobs endpoints
+│   │   ├── ExportController.cs    # CSV/JSON export (NEW Day 3, Bài 7)
 │   │   └── HealthController.cs
 │   ├── Data/
 │   │   └── AppDbContext.cs        # EF Core DbContext (MySQL via Pomelo)
@@ -100,6 +105,9 @@ Day3/
 │   └── Services/AssetServiceTests.cs  # Moq mock tests
 ├── frontend/
 │   └── index.html                 # Single-file vanilla JS dashboard
+├── Dockerfile                      # Multi-stage build (Bài 6)
+├── docker-compose.yml              # db (MySQL) + backend (Bài 6)
+├── api.yml                         # OpenAPI 3.0 spec
 └── homeworks/submissions/day3/SUBMISSION.md
 ```
 
@@ -140,6 +148,16 @@ Day3/
 | Method | Endpoint |
 |--------|----------|
 | GET    | `/health` |
+
+### Export (Bài 7 — Bonus)
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| GET    | `/export/assets.csv` | Tất cả assets dạng CSV |
+| GET    | `/export/assets.json` | Tất cả assets dạng JSON |
+| GET    | `/assets/{id}/export/results.json` | Scan results của asset (JSON download) |
+| GET    | `/assets/{id}/export/results.csv` | Scan results của asset (CSV download) |
+| GET    | `/scan-jobs/{id}/export/results.json` | Results của 1 job (JSON download) |
 
 ---
 

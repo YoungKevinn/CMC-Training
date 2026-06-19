@@ -134,7 +134,7 @@ public class ExportController(IAssetStorage assetStorage, IScanRepository scanRe
             var root = doc.RootElement;
             return scanType switch
             {
-                "dns"        => $"a:{GetArrayLen(root,"a")} mx:{GetArrayLen(root,"mx")} ns:{GetArrayLen(root,"ns")}",
+                "dns"        => $"a:{GetNestedArrayLen(root,"records","a")} mx:{GetNestedArrayLen(root,"records","mx")} ns:{GetNestedArrayLen(root,"records","ns")}",
                 "ssl"        => $"grade:{GetStr(root,"grade")} tls:{GetNestedStr(root,"connection","tls_version")}",
                 "port"       => $"open:{GetArrayLen(root,"open_ports")} scanned:{GetInt(root,"total_scanned")}",
                 "ip"         => $"country:{GetNestedStr(root,"geolocation","country")} asn:{GetNestedStr(root,"asn","number")}",
@@ -150,6 +150,14 @@ public class ExportController(IAssetStorage assetStorage, IScanRepository scanRe
     {
         if (root.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.Array)
             return el.GetArrayLength();
+        return 0;
+    }
+
+    private static int GetNestedArrayLen(JsonElement root, string key1, string key2)
+    {
+        if (root.TryGetProperty(key1, out var el1) && el1.TryGetProperty(key2, out var el2)
+            && el2.ValueKind == JsonValueKind.Array)
+            return el2.GetArrayLength();
         return 0;
     }
 
