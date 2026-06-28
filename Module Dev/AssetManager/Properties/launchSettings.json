@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "AssetManager": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:26271;http://localhost:26272"
+    }
+  }
+}
