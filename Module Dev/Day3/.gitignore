@@ -1,0 +1,13 @@
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+*.user
+.vs/
+coverage.out
+coverage.html
+*.cobertura.xml
+TestResults/
+launchSettings.json
+*.sln

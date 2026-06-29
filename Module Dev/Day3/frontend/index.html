@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini EASM — Asset Manager</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #7d8590; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    --orange: #f0883e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+
+  /* Nav */
+  nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  nav h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
+  .stat-chip { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
+  .stat-chip span { color: var(--text); font-weight: 600; }
+
+  /* Layout */
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .card-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+
+  /* Form */
+  .form { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 13px; outline: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-danger  { background: transparent; border: 1px solid var(--red); color: var(--red); font-size: 12px; padding: 4px 10px; }
+  .btn-scan    { background: transparent; border: 1px solid var(--green); color: var(--green); font-size: 12px; padding: 4px 10px; }
+  .btn-danger:hover { background: var(--red); color: #fff; }
+  .btn-scan:hover   { background: var(--green); color: #000; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 14px; text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+  .badge-domain  { background: rgba(88,166,255,.15); color: var(--accent); }
+  .badge-ip      { background: rgba(63,185,80,.15);  color: var(--green); }
+  .badge-service { background: rgba(240,136,62,.15); color: var(--orange); }
+  .badge-active   { background: rgba(63,185,80,.15);  color: var(--green); }
+  .badge-inactive { background: rgba(125,133,144,.15); color: var(--muted); }
+
+  /* Scan panel */
+  #scan-panel { margin-top: 20px; }
+  .scan-select-row { display: flex; gap: 8px; padding: 16px; border-bottom: 1px solid var(--border); }
+  .scan-select-row select { flex: 1; }
+  #results-area { padding: 16px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow: auto; font-size: 12px; max-height: 400px; white-space: pre-wrap; word-break: break-all; }
+  .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+  .status-pending   { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .status-running   { background: rgba(88,166,255,.15); color: var(--accent); }
+  .status-completed { background: rgba(63,185,80,.15);  color: var(--green); }
+  .status-failed    { background: rgba(248,81,73,.15);   color: var(--red); }
+  .status-partial   { background: rgba(240,136,62,.15);  color: var(--orange); }
+
+  .empty-state { text-align: center; color: var(--muted); padding: 40px 20px; }
+  .error-msg { color: var(--red); font-size: 12px; margin-top: 4px; }
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; display: none; z-index: 9999; }
+</style>
+</head>
+<body>
+
+<nav>
+  <h1>Mini EASM</h1>
+  <div class="stat-chip">Total: <span id="stat-total">0</span></div>
+  <div class="stat-chip">Domain: <span id="stat-domain">0</span></div>
+  <div class="stat-chip">IP: <span id="stat-ip">0</span></div>
+  <div class="stat-chip">Service: <span id="stat-service">0</span></div>
+</nav>
+
+<div class="container">
+  <div class="grid">
+
+    <!-- Left: Create form -->
+    <div>
+      <div class="card">
+        <div class="card-header">Add Asset</div>
+        <div class="form">
+          <div>
+            <label>Name / Target</label>
+            <input id="inp-name" type="text" placeholder="example.com or 192.168.1.1">
+          </div>
+          <div>
+            <label>Type</label>
+            <select id="inp-type">
+              <option value="domain">domain</option>
+              <option value="ip">ip</option>
+              <option value="service">service</option>
+            </select>
+          </div>
+          <div id="create-error" class="error-msg" style="display:none"></div>
+          <button class="btn btn-primary" onclick="createAsset()">Add Asset</button>
+        </div>
+      </div>
+
+      <!-- Scan Panel -->
+      <div id="scan-panel" class="card" style="margin-top:16px; display:none;">
+        <div class="card-header">
+          <span>Scan: <span id="scan-target-name" style="color:var(--accent)"></span></span>
+          <button class="btn btn-danger" onclick="closeScanPanel()" style="padding:2px 8px;font-size:11px;">✕</button>
+        </div>
+        <div class="scan-select-row">
+          <select id="scan-type-select"></select>
+          <button class="btn btn-scan" onclick="startScan()">Run Scan</button>
+        </div>
+        <div id="results-area">
+          <p style="color:var(--muted);font-size:12px;">Select a scan type and click Run Scan.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Asset list -->
+    <div class="card">
+      <div class="card-header">
+        Assets
+        <input type="text" id="search-inp" placeholder="Search..." style="width:200px;padding:4px 8px;font-size:12px;" oninput="searchAssets(this.value)">
+      </div>
+      <div id="asset-list">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:8080';
+let currentAssetId = null;
+let pollTimer = null;
+
+// Scan types allowed per asset type
+const SCAN_TYPES = {
+  domain:  ['dns','whois','subdomain','cert_trans','ssl','tech','all'],
+  ip:      ['asn','ip','port'],
+  service: ['ssl','tech']
+};
+
+async function api(method, path, body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, data: text ? JSON.parse(text) : null };
+}
+
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--red)' : 'var(--green)';
+  el.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// ===== Stats =====
+async function loadStats() {
+  const { data } = await api('GET', '/assets/stats');
+  if (!data) return;
+  document.getElementById('stat-total').textContent = data.total ?? 0;
+  document.getElementById('stat-domain').textContent = data.by_type?.domain ?? 0;
+  document.getElementById('stat-ip').textContent = data.by_type?.ip ?? 0;
+  document.getElementById('stat-service').textContent = data.by_type?.service ?? 0;
+}
+
+// ===== Asset List =====
+async function loadAssets(query) {
+  const path = query ? `/assets/search?q=${encodeURIComponent(query)}` : '/assets?limit=100';
+  const { data } = await api('GET', path);
+  const items = Array.isArray(data) ? data : (data?.items ?? []);
+  renderAssets(items);
+}
+
+function renderAssets(assets) {
+  const el = document.getElementById('asset-list');
+  if (!assets.length) {
+    el.innerHTML = '<div class="empty-state">No assets found. Add one to get started.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${assets.map(a => `
+          <tr>
+            <td style="font-family:monospace;font-size:13px;">${esc(a.name)}</td>
+            <td><span class="badge badge-${a.type}">${esc(a.type)}</span></td>
+            <td><span class="badge badge-${a.status}">${esc(a.status)}</span></td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-scan" onclick="openScanPanel('${esc(a.id)}','${esc(a.name)}','${esc(a.type)}')">Scan</button>
+              &nbsp;
+              <button class="btn btn-danger" onclick="deleteAsset('${esc(a.id)}','${esc(a.name)}')">Delete</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function createAsset() {
+  const name = document.getElementById('inp-name').value.trim();
+  const type = document.getElementById('inp-type').value;
+  const errEl = document.getElementById('create-error');
+  errEl.style.display = 'none';
+
+  if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+
+  const { ok, data } = await api('POST', '/assets', { name, type });
+  if (!ok) {
+    errEl.textContent = data?.error ?? 'Failed to create asset';
+    errEl.style.display = 'block';
+    return;
+  }
+  document.getElementById('inp-name').value = '';
+  toast('Asset created: ' + data.name);
+  loadAssets();
+  loadStats();
+}
+
+async function deleteAsset(id, name) {
+  if (!confirm(`Delete asset "${name}"?`)) return;
+  const { ok } = await api('DELETE', `/assets/${id}`);
+  if (ok) {
+    toast('Deleted: ' + name);
+    if (currentAssetId === id) closeScanPanel();
+    loadAssets();
+    loadStats();
+  } else {
+    toast('Failed to delete', true);
+  }
+}
+
+function searchAssets(q) {
+  clearTimeout(window._searchTimer);
+  window._searchTimer = setTimeout(() => loadAssets(q || null), 300);
+}
+
+// ===== Scan Panel =====
+function openScanPanel(id, name, type) {
+  currentAssetId = id;
+  document.getElementById('scan-target-name').textContent = name;
+  document.getElementById('scan-panel').style.display = 'block';
+
+  const sel = document.getElementById('scan-type-select');
+  const types = SCAN_TYPES[type] ?? ['dns'];
+  sel.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  document.getElementById('results-area').innerHTML =
+    '<p style="color:var(--muted);font-size:12px;">Select a scan type and click Run Scan.</p>';
+}
+
+function closeScanPanel() {
+  document.getElementById('scan-panel').style.display = 'none';
+  clearInterval(pollTimer);
+  currentAssetId = null;
+}
+
+async function startScan() {
+  if (!currentAssetId) return;
+  const scanType = document.getElementById('scan-type-select').value;
+  const area = document.getElementById('results-area');
+  area.innerHTML = '<p style="color:var(--muted);font-size:12px;">Starting scan…</p>';
+
+  const { ok, data } = await api('POST', `/assets/${currentAssetId}/scan`, { scan_type: scanType });
+  if (!ok) {
+    area.innerHTML = `<p class="error-msg">${esc(data?.error ?? 'Failed to start scan')}</p>`;
+    return;
+  }
+
+  const jobId = data.id;
+  renderJobStatus(data);
+  pollJobStatus(jobId);
+}
+
+function renderJobStatus(job) {
+  const area = document.getElementById('results-area');
+  area.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">Job ID: <span style="color:var(--text);font-family:monospace">${esc(job.id)}</span></span>
+      <span class="status-badge status-${job.status}">${esc(job.status)}</span>
+      ${job.results > 0 ? `<span style="font-size:12px;color:var(--muted);">${job.results} result(s)</span>` : ''}
+    </div>
+    <div id="job-results-content">
+      ${job.status === 'running' || job.status === 'pending'
+        ? '<p style="color:var(--muted);font-size:12px;">⟳ Scanning… (auto-refreshing)</p>'
+        : ''}
+    </div>`;
+
+  if (job.status === 'completed' || job.status === 'partial') {
+    loadJobResults(job.id);
+  }
+  if (job.status === 'failed') {
+    document.getElementById('job-results-content').innerHTML =
+      `<p class="error-msg">Error: ${esc(job.error || 'Unknown error')}</p>`;
+  }
+}
+
+function pollJobStatus(jobId) {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    const { data } = await api('GET', `/scan-jobs/${jobId}`);
+    if (!data) return;
+    renderJobStatus(data);
+    if (data.status === 'completed' || data.status === 'failed' || data.status === 'partial') {
+      clearInterval(pollTimer);
+    }
+  }, 2000);
+}
+
+async function loadJobResults(jobId) {
+  const { data } = await api('GET', `/scan-jobs/${jobId}/results`);
+  const content = document.getElementById('job-results-content');
+  if (!data || !data.results?.length) {
+    content.innerHTML = '<p style="color:var(--muted);font-size:12px;">No results found.</p>';
+    return;
+  }
+  content.innerHTML = `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+}
+
+// ===== Init =====
+loadAssets();
+loadStats();
+</script>
+</body>
+</html>

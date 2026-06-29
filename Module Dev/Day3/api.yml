@@ -1,0 +1,539 @@
+openapi: "3.0.3"
+info:
+  title: Mini EASM — Asset Manager API
+  description: External Attack Surface Management API (Day 3 — C# / ASP.NET Core 8)
+  version: "3.0.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Assets
+    description: Asset CRUD + scan triggers
+  - name: Scan Jobs
+    description: Scan job status and results
+  - name: Health
+    description: Server health check
+  - name: Export
+    description: Export assets and scan results as CSV/JSON (Bài 7)
+
+paths:
+
+  # ── Assets ──────────────────────────────────────────────
+
+  /assets:
+    get:
+      tags: [Assets]
+      summary: List assets (paginated)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: type
+          schema: { type: string, enum: [domain, ip, service] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, inactive] }
+      responses:
+        "200":
+          description: Paginated asset list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Asset" }
+                  total:    { type: integer }
+                  page:     { type: integer }
+                  limit:    { type: integer }
+                  pages:    { type: integer }
+
+    post:
+      tags: [Assets]
+      summary: Create a new asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAssetRequest" }
+      responses:
+        "201":
+          description: Asset created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /assets/stats:
+    get:
+      tags: [Assets]
+      summary: Get asset statistics
+      responses:
+        "200":
+          description: Stats object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  by_type:
+                    type: object
+                    properties:
+                      domain:  { type: integer }
+                      ip:      { type: integer }
+                      service: { type: integer }
+                  by_status:
+                    type: object
+                    properties:
+                      active:   { type: integer }
+                      inactive: { type: integer }
+
+  /assets/count:
+    get:
+      tags: [Assets]
+      summary: Count assets with optional filter
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        "200":
+          description: Count result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+
+  /assets/search:
+    get:
+      tags: [Assets]
+      summary: Search assets by name
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Asset" }
+
+  /assets/batch:
+    post:
+      tags: [Assets]
+      summary: Create multiple assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: "#/components/schemas/CreateAssetRequest" }
+      responses:
+        "201":
+          description: Created assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Asset" }
+    delete:
+      tags: [Assets]
+      summary: Delete multiple assets
+      parameters:
+        - in: query
+          name: ids
+          required: true
+          schema: { type: string }
+          description: Comma-separated asset IDs
+      responses:
+        "200":
+          description: Deleted count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer }
+
+  /assets/{id}:
+    get:
+      tags: [Assets]
+      summary: Get asset by ID
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: Asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    put:
+      tags: [Assets]
+      summary: Update asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAssetRequest" }
+      responses:
+        "200":
+          description: Updated asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      tags: [Assets]
+      summary: Delete asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /assets/{id}/scan:
+    post:
+      tags: [Assets]
+      summary: Start a scan job
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scan_type]
+              properties:
+                scan_type:
+                  type: string
+                  enum: [dns, whois, subdomain, cert_trans, asn, all, ip, port, ssl, tech]
+      responses:
+        "202":
+          description: Job accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /assets/{id}/scans:
+    get:
+      tags: [Assets]
+      summary: List all scan jobs for an asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: Scan jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ScanJob" }
+
+  /assets/{id}/results:
+    get:
+      tags: [Assets]
+      summary: Get all scan results for an asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+        - in: query
+          name: scan_type
+          schema: { type: string }
+      responses:
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset_id: { type: string }
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/ScanResult" }
+
+  /assets/{id}/dns:
+    get:
+      tags: [Assets]
+      summary: Get latest DNS results for asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: DNS results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanResult" }
+
+  /assets/{id}/whois:
+    get:
+      tags: [Assets]
+      summary: Get latest WHOIS results for asset
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: WHOIS results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanResult" }
+
+  /assets/{id}/subdomains:
+    get:
+      tags: [Assets]
+      summary: Get latest subdomain enumeration results
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: Subdomain results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanResult" }
+
+  # ── Scan Jobs ───────────────────────────────────────────
+
+  /scan-jobs/{id}:
+    get:
+      tags: [Scan Jobs]
+      summary: Get scan job status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanJob" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /scan-jobs/{id}/results:
+    get:
+      tags: [Scan Jobs]
+      summary: Get scan job results
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:    { type: string, format: uuid }
+                  scan_type: { type: string }
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/ScanResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Health ──────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200":
+          description: Server healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  time:   { type: string, format: date-time }
+
+  # ── Export (Bài 7) ───────────────────────────────────────
+
+  /export/assets.csv:
+    get:
+      tags: [Export]
+      summary: Export all assets as CSV
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /export/assets.json:
+    get:
+      tags: [Export]
+      summary: Export all assets as JSON
+      responses:
+        "200":
+          description: JSON with all assets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exported_at: { type: string, format: date-time }
+                  total:       { type: integer }
+                  assets:
+                    type: array
+                    items: { $ref: "#/components/schemas/Asset" }
+
+  /assets/{id}/export/results.json:
+    get:
+      tags: [Export]
+      summary: Export all scan results of an asset as a downloadable JSON file
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: JSON file download with asset + scan summary + results
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /assets/{id}/export/results.csv:
+    get:
+      tags: [Export]
+      summary: Export all scan results of an asset as a downloadable CSV file
+      parameters:
+        - { $ref: "#/components/parameters/AssetId" }
+      responses:
+        "200":
+          description: CSV file download (id,job_id,asset_id,scan_type,created_at,data_summary)
+          content:
+            text/csv:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /scan-jobs/{id}/export/results.json:
+    get:
+      tags: [Export]
+      summary: Export results of a single scan job as a downloadable JSON file
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: JSON file download with job + results
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+# ── Components ──────────────────────────────────────────────────────────────
+
+components:
+  parameters:
+    AssetId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: Asset UUID
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+
+    Asset:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        name:       { type: string, example: "example.com" }
+        type:       { type: string, enum: [domain, ip, service] }
+        status:     { type: string, enum: [active, inactive] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateAssetRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name:   { type: string, example: "example.com" }
+        type:   { type: string, enum: [domain, ip, service] }
+        status: { type: string, enum: [active, inactive], default: active }
+
+    UpdateAssetRequest:
+      type: object
+      properties:
+        name:   { type: string }
+        type:   { type: string, enum: [domain, ip, service] }
+        status: { type: string, enum: [active, inactive] }
+
+    ScanJob:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        asset_id:   { type: string, format: uuid }
+        scan_type:  { type: string, enum: [dns, whois, subdomain, cert_trans, asn, all, ip, port, ssl, tech] }
+        status:     { type: string, enum: [pending, running, completed, failed, partial] }
+        error:      { type: string, nullable: true }
+        results:    { type: integer, description: "Number of result records" }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        ended_at:   { type: string, format: date-time, nullable: true }
+
+    ScanResult:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        job_id:     { type: string, format: uuid }
+        asset_id:   { type: string, format: uuid }
+        scan_type:  { type: string }
+        data:       { type: object, description: "Scan-type-specific result payload" }
+        created_at: { type: string, format: date-time }
+
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
